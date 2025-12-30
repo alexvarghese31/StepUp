@@ -77,6 +77,14 @@ export class ApplicationsService {
     throw new BadRequestException('This job is not accepting applications');
   }
 
+  // Prevent applying to external jobs managed by third-parties — direct user to externalUrl
+  if (job.isExternal) {
+    const msg = job.externalUrl
+      ? `This listing is hosted externally. Please apply via: ${job.externalUrl}`
+      : 'This listing is hosted externally. Please follow the external application instructions.';
+    throw new BadRequestException(msg);
+  }
+
   // 3️⃣ create new record
   const saved = await this.appRepo.save({
     job,
@@ -84,7 +92,10 @@ export class ApplicationsService {
     status: 'pending',
   });
 
-  this.jobsGateway.notifyRecruiter(job.postedBy, saved);  // 🔵 REAL-TIME EVENT
+  // 🔵 REAL-TIME EVENT - notify recruiter only if job was posted by a recruiter
+  if (job.postedBy) {
+    this.jobsGateway.notifyRecruiter(job.postedBy, saved);
+  }
   return saved;
 }
     async getApplicants(jobId: number) {

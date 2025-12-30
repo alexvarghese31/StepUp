@@ -101,7 +101,12 @@ export default function SavedJobs() {
               return (
                 <div key={savedJob.id} style={styles.jobCard}>
                   <h3 style={styles.jobTitle}>{job.title}</h3>
-                  <p style={styles.company}>{job.company}</p>
+                  <p style={styles.company}>
+                    {job.company}
+                    {job.isExternal && (
+                      <span style={styles.externalBadge}>External</span>
+                    )}
+                  </p>
 
                   <div style={styles.jobDetails}>
                     {job.location && (
@@ -118,7 +123,10 @@ export default function SavedJobs() {
                         <svg style={styles.detailIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        ${job.salaryMin.toLocaleString()} - ${job.salaryMax.toLocaleString()}
+                        {(() => {
+                          const symbol = job.externalCurrency === 'INR' ? '₹' : '$';
+                          return `${symbol}${job.salaryMin.toLocaleString()} - ${symbol}${job.salaryMax.toLocaleString()}`;
+                        })()}
                       </div>
                     )}
                     {job.experienceRequired !== null && job.experienceRequired !== undefined && (
@@ -163,15 +171,30 @@ export default function SavedJobs() {
                   </div>
 
                   <div style={styles.cardActions}>
-                    <button 
-                      onClick={() => handleApply(job.id)}
-                      style={styles.applyButton}
-                    >
-                      <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Apply Now
-                    </button>
+                    {job.isExternal && job.externalUrl ? (
+                      <a
+                        href={job.externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ ...styles.applyButton, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3h7v7M21 3L10 14" />
+                        </svg>
+                        Apply on Company Site
+                      </a>
+                    ) : (
+                      <button 
+                        onClick={() => handleApply(job.id)}
+                        style={styles.applyButton}
+                      >
+                        <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Apply Now
+                      </button>
+                    )}
+
                     <button 
                       onClick={() => handleRemove(job.id)}
                       style={styles.removeButton}
@@ -286,6 +309,17 @@ const styles = {
     borderRadius: '4px',
     fontSize: '12px',
     fontWeight: 500,
+  },
+  externalBadge: {
+    display: 'inline-block',
+    marginLeft: '8px',
+    padding: '2px 8px',
+    background: '#F3F4F6',
+    color: '#374151',
+    borderRadius: '12px',
+    fontSize: '12px',
+    fontWeight: 600,
+    verticalAlign: 'middle'
   },
   description: {
     fontSize: '14px',

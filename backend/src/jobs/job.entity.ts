@@ -20,14 +20,14 @@ export class Job {
   @Column('text')
   description: string;
 
-  @Column({ nullable: true })
-  salaryMin: number;
+  @Column({ type: 'double precision', nullable: true })
+  salaryMin: number | null;
 
-  @Column({ nullable: true })
-  salaryMax: number;
+  @Column({ type: 'double precision', nullable: true })
+  salaryMax: number | null;
 
-  @Column({ nullable: true })
-  experienceRequired: number;  // in years
+  @Column({ type: 'integer', nullable: true })
+  experienceRequired: number | null;  // in years
 
   @Column({
     type: 'enum',
@@ -36,14 +36,32 @@ export class Job {
   })
   jobType: string;
 
-  @Column()
-  postedBy: number;   // recruiter user id
+  @Column({ type: 'integer', nullable: true })
+  postedBy: number | null;   // recruiter user id (nullable for external/system jobs)
+
+  @Column({ default: false })
+  isExternal: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  externalSource: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  externalId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  externalUrl: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  externalCurrency: string | null;
+
+  @Column('json', { nullable: true })
+  raw: any;
 
   @Column({
-  type: 'enum',
-  enum: ['open', 'closed', 'paused'],
-  default: 'open',
-    })
+    type: 'enum',
+    enum: ['open', 'closed', 'paused'],
+    default: 'open',
+  })
   status: string;
 
   @CreateDateColumn()

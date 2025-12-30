@@ -2,79 +2,48 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job } from './job.entity';
-import fakeJobs from './fakejobs.json';   // adjust path if needed
-import { JobsGateway } from 'src/gateway/jobs.gateway';
-import { Cron } from '@nestjs/schedule';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { JobsGateway } from 'src/gateway/jobs.gateway';
 
 @Injectable()
-export class JobsAggregatorService {
-
-  private readonly logger = new Logger(JobsAggregatorService.name);
+export class ExternalJobsService {
+  private readonly logger = new Logger(ExternalJobsService.name);
 
   constructor(
-    @InjectRepository(Job)
-    private readonly jobsRepo: Repository<Job>,
-    private readonly gateway: JobsGateway,
+    @InjectRepository(Job) private readonly jobsRepo: Repository<Job>,
     private readonly http: HttpService,
+    private readonly gateway: JobsGateway,
   ) {}
 
-  @Cron('*/5 * * * *') 
-  async importJobs() {
-    this.logger.log('🚀 Cron Triggered — importing jobs...');
-    // Import fake jobs first
-    this.logger.log(`Found ${fakeJobs.length} jobs in feed`);
-    this.logger.log(`Checking for duplicates...`);
-    for (const j of fakeJobs) {
-      const exists = await this.jobsRepo.findOne({ where: { title: j.title, company: j.company } });
-      if (exists) continue;
-      const job = this.jobsRepo.create({
-        title: j.title,
-        company: j.company,
-        description: j.description,
-        skills: j.skills ?? '',
-        location: j.location ?? '',
-        postedBy: null,
-        status: 'open',
-        isExternal: false,
-      } as Partial<Job>);
-      const saved = await this.jobsRepo.save(job);
-      this.logger.log(`✔ Imported: ${saved.title}`);
-      this.gateway.notifyNewJob(saved);
-    }
-
-    // Now fetch Adzuna feed (if configured)
+  async fetchAndSaveNow(options: { country?: string; results_per_page?: number } = {}) {
     const app_id = process.env.ADZUNA_APP_ID;
     const app_key = process.env.ADZUNA_APP_KEY;
-    const country = process.env.ADZUNA_COUNTRY || 'us';
+    const country = options.country || process.env.ADZUNA_COUNTRY || 'us';
+
     if (!app_id || !app_key) {
-      this.logger.warn('Adzuna credentials not configured — skipping external import');
-      return;
+      this.logger.warn('Adzuna credentials not configured — skipping fetch');
+      return [];
     }
 
+    const perPage = options.results_per_page || 50;
+    const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${app_id}&app_key=${app_key}&results_per_page=${perPage}`;
+
     try {
-      const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/1?app_id=${app_id}&app_key=${app_key}&results_per_page=50`;
       const resp = await firstValueFrom(this.http.get(url));
       const data = resp.data;
-      if (!data || !Array.isArray(data.results)) {
-        this.logger.warn('Adzuna returned no results');
-        return;
-      }
+      if (!data || !Array.isArray(data.results)) return [];
 
-      this.logger.log(`Adzuna feed contains ${data.results.length} items`);
-
+      const savedJobs: Job[] = [];
       function normalizeJobType(contract_time: string | undefined) {
         if (!contract_time) return 'full-time';
         return contract_time.replace(/_/g, '-');
       }
 
       for (const r of data.results) {
-        // skip if already exist by external id
         const existsExternal = await this.jobsRepo.findOne({ where: { externalSource: 'adzuna', externalId: String(r.id) } });
         if (existsExternal) continue;
 
-        // fallback duplicate detection by title+company
         const exists = await this.jobsRepo.findOne({ where: { title: r.title, company: r.company && r.company.display_name } });
         if (exists) continue;
 
@@ -100,12 +69,16 @@ export class JobsAggregatorService {
           raw: r,
         } as Partial<Job>);
 
-        const saved = await this.jobsRepo.save(job);
-        this.logger.log(`✔ Imported external: ${saved.title}`);
+        const saved = await this.jobsRepo.save(job as any);
+        savedJobs.push(saved);
         this.gateway.notifyNewJob(saved);
       }
+
+      this.logger.log(`Saved ${savedJobs.length} new external jobs`);
+      return savedJobs;
     } catch (err) {
-      this.logger.error('Failed to fetch Adzuna feed', err as any);
+      this.logger.error('Failed to fetch Adzuna', err as any);
+      return [];
     }
   }
 }

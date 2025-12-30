@@ -14,6 +14,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { JobsService } from './jobs.service';
+import { ExternalJobsService } from './external-jobs.service';
 import { CreateJobDto } from './create-job.dto';
 import { ProfilesService } from '../profiles/profiles.service';
 import { UpdateJobStatusDto } from './dto/update-status.dto';
@@ -23,6 +24,7 @@ export class JobsController {
   constructor(
     private readonly jobsService: JobsService,
     private readonly profilesService: ProfilesService,
+    private readonly externalJobsService: ExternalJobsService,
   ) {}
 
   // 🟣 Recruiter creates job
@@ -39,6 +41,14 @@ export class JobsController {
     return this.jobsService.findAll();
   }
 
+  // Admin trigger to import external jobs immediately
+  @Post('import-external')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  async importExternal() {
+    return this.externalJobsService.fetchAndSaveNow();
+  }
+
   // 🟢 Personalized recommendations
   @UseGuards(AuthGuard('jwt'))
   @Get('recommend')
@@ -50,7 +60,7 @@ export class JobsController {
   // � Get matched candidates for a job (Recruiter only)
   @Get(':id/matched-candidates')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('recruiter')
+  @Roles('recruiter','admin')
   async getMatchedCandidates(
     @Param('id', ParseIntPipe) id: number,
     @Req() req: any,

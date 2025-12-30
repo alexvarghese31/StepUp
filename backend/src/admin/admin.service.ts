@@ -324,13 +324,15 @@ export class AdminService {
 
     const saved = await this.jobsRepo.save(job);
 
-    // Notify the recruiter about the status change
-    this.jobsGateway.notifyJobStatusUpdate(job.postedBy, {
-      jobId: saved.id,
-      jobTitle: saved.title,
-      oldStatus,
-      newStatus: saved.status
-    });
+    // Notify the recruiter about the status change (only if a recruiter is associated)
+    if (job.postedBy) {
+      this.jobsGateway.notifyJobStatusUpdate(job.postedBy, {
+        jobId: saved.id,
+        jobTitle: saved.title,
+        oldStatus,
+        newStatus: saved.status
+      });
+    }
 
     return saved;
   }
@@ -345,14 +347,17 @@ export class AdminService {
     const jobId = job.id;
 
     // Check if recruiter still exists
-    const recruiter = await this.usersRepo.findOne({ where: { id: recruiterId } });
+    let recruiter: User | null = null;
+    if (recruiterId) {
+      recruiter = await this.usersRepo.findOne({ where: { id: recruiterId } });
+    }
 
     // Delete the job completely
     await this.jobsRepo.remove(job);
 
     // Notify the recruiter about job deletion only if user exists
     if (recruiter) {
-      this.jobsGateway.notifyJobDeleted(recruiterId, {
+      this.jobsGateway.notifyJobDeleted(recruiterId as number, {
         jobId,
         jobTitle,
         message: `Your job "${jobTitle}" has been removed by admin`
