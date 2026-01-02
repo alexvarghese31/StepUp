@@ -30,7 +30,31 @@ export default function Jobs() {
     try {
       setLoading(true);
       const res = await api.get("/jobs");
-      setJobs(res.data);
+
+      // fetch user's saved jobs and applications to mark UI state
+      let savedRes = { data: [] };
+      let appsRes = { data: [] };
+      try {
+        savedRes = await api.get('/jobs/saved', { headers: { Authorization: `Bearer ${token}` } });
+      } catch (e) {
+        // ignore - user may be guest or endpoint may be empty
+      }
+      try {
+        appsRes = await api.get('/applications/me', { headers: { Authorization: `Bearer ${token}` } });
+      } catch (e) {
+        // ignore
+      }
+
+      const savedIds = new Set((savedRes.data || []).map(s => s.job?.id || s.jobId || s.job));
+      const appliedIds = new Set((appsRes.data || []).map(a => a.job?.id || a.jobId || a.job));
+
+      const jobsWithFlags = res.data.map(j => ({
+        ...j,
+        isSaved: savedIds.has(j.id),
+        hasApplied: appliedIds.has(j.id),
+      }));
+
+      setJobs(jobsWithFlags);
     } catch (err) {
       console.error("Error fetching jobs:", err);
       toast.error("Failed to fetch jobs");
@@ -86,6 +110,9 @@ export default function Jobs() {
   }
 
   async function handleApply(jobId) {
+    // optimistic UI: mark applied immediately
+    const prev = jobs;
+    setJobs(prevJobs => prevJobs.map(j => j.id === jobId ? { ...j, hasApplied: true } : j));
     try {
       await api.post(`/applications/${jobId}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
@@ -93,11 +120,15 @@ export default function Jobs() {
       toast.success("Application submitted successfully!");
     } catch (err) {
       console.error("Error applying:", err);
+      setJobs(prev);
       toast.error(err.response?.data?.message || "Failed to apply");
     }
   }
 
   async function handleSave(jobId) {
+    // optimistic UI: mark saved immediately
+    const prev = jobs;
+    setJobs(prevJobs => prevJobs.map(j => j.id === jobId ? { ...j, isSaved: true } : j));
     try {
       await api.post(`/jobs/${jobId}/save`, {}, {
         headers: { Authorization: `Bearer ${token}` }
@@ -105,6 +136,7 @@ export default function Jobs() {
       toast.success("Job saved successfully!");
     } catch (err) {
       console.error("Error saving job:", err);
+      setJobs(prev);
       toast.error(err.response?.data?.message || "Failed to save job");
     }
   }
@@ -385,27 +417,32 @@ export default function Jobs() {
                   ) : (
                     <button 
                       onClick={() => handleApply(job.id)}
-                      disabled={job.status !== "open"}
+                      disabled={job.status !== "open" || job.hasApplied}
                       style={{
                         ...styles.applyButton,
-                        ...(job.status !== "open" && styles.disabledButton)
+                        ...(job.status !== "open" && styles.disabledButton),
+                        ...(job.hasApplied && styles.disabledButton)
                       }}
                     >
                       <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Apply Now
+                      {job.hasApplied ? 'Applied' : 'Apply Now'}
                     </button>
                   )}
 
                   <button 
-                    onClick={() => handleSave(job.id)}
-                    style={styles.saveButton}
+                    onClick={() => !job.isSaved && handleSave(job.id)}
+                    disabled={job.isSaved}
+                    style={{
+                      ...styles.saveButton,
+                      ...(job.isSaved && styles.disabledButton)
+                    }}
                   >
                     <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                     </svg>
-                    Save
+                    {job.isSaved ? 'Saved' : 'Save'}
                   </button>
                 </div>
               </div>

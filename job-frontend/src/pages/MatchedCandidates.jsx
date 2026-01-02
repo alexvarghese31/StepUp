@@ -2,6 +2,8 @@ import { useState, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import api from "../api/axios";
+import { useToast } from "../hooks/useToast";
+import ToastContainer from "../components/ToastContainer";
 
 export default function MatchedCandidates() {
   const { jobId } = useParams();
@@ -10,6 +12,8 @@ export default function MatchedCandidates() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [sortBy, setSortBy] = useState("score"); // score or name
+  const toast = useToast();
+  const [applicantIds, setApplicantIds] = useState(new Set());
 
   useEffect(() => {
     fetchMatchedCandidates();
@@ -22,6 +26,18 @@ export default function MatchedCandidates() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setData(res.data);
+
+      // fetch applicants for this job so recruiters can only view resumes for applicants
+      try {
+        const appsRes = await api.get(`/applications/job/${jobId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const ids = new Set((appsRes.data || []).map(a => a.applicant?.id));
+        setApplicantIds(ids);
+      } catch (e) {
+        // if fetching applicants fails, keep set empty (no resumes viewable)
+        setApplicantIds(new Set());
+      }
     } catch (err) {
       console.error("Error fetching matched candidates:", err);
       alert(err.response?.data?.message || "Failed to fetch matched candidates");
@@ -64,8 +80,31 @@ export default function MatchedCandidates() {
     return { label: "Low", color: "#DC2626", bg: "#FEE2E2" };
   };
 
+  async function tryOpenResume(resumeUrl, userId) {
+    if (!applicantIds.has(userId)) {
+      toast.info("You can view a candidate's resume only after they apply to this job.");
+      return;
+    }
+
+    const fullUrl = `http://localhost:3000/${resumeUrl}`;
+    try {
+      // check if file exists to avoid navigating to server 404 page
+      const res = await fetch(fullUrl, { method: 'HEAD' });
+      if (!res.ok) {
+        toast.error('Resume not available');
+        return;
+      }
+      window.open(fullUrl, '_blank');
+    } catch (err) {
+      console.error('Error checking resume:', err);
+      toast.error('Unable to open resume');
+    }
+  }
+
   return (
-    <div>
+    <>
+      <ToastContainer toasts={toast.toasts} removeToast={toast.removeToast} />
+      <div>
       {/* Header */}
       <div style={styles.header}>
         <button onClick={() => navigate("/recruiter/my-jobs")} style={styles.backButton}>
@@ -236,17 +275,15 @@ export default function MatchedCandidates() {
                 </div>
 
                 {candidate.resumeUrl && (
-                  <a 
-                    href={`http://localhost:3000/${candidate.resumeUrl}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => tryOpenResume(candidate.resumeUrl, candidate.userId)}
                     style={styles.resumeButton}
                   >
                     <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd"/>
                     </svg>
                     View Resume
-                  </a>
+                  </button>
                 )}
 
                 <div style={styles.matchNote}>
@@ -257,7 +294,8 @@ export default function MatchedCandidates() {
           })}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -126,7 +126,7 @@ export class ApplicationsService {
   });
 }
 
-async updateStatus(appId: number, status: 'approved' | 'rejected') {
+async updateStatus(appId: number, status: string) {
   const app = await this.appRepo.findOne({
     where: { id: appId },
     relations: ['job', 'applicant'],
@@ -134,7 +134,13 @@ async updateStatus(appId: number, status: 'approved' | 'rejected') {
 
   if (!app) throw new NotFoundException('Application not found');
 
-  app.status = status;
+  // Normalize status values: frontend may send 'accepted' — treat it as 'approved'
+  const normalized = status === 'accepted' ? 'approved' : status;
+  if (!['approved', 'rejected', 'pending'].includes(normalized)) {
+    throw new BadRequestException('Invalid status');
+  }
+
+  app.status = normalized;
 
   const saved = await this.appRepo.save(app);
 

@@ -45,7 +45,8 @@ export class AdminService {
 
     const totalApps = await this.appsRepo.count();
     const pendingApps = await this.appsRepo.count({ where: { status: 'pending' } });
-    const approvedApps = await this.appsRepo.count({ where: { status: 'approved' } });
+    // Count approved applications — accept both 'approved' and legacy 'accepted'
+    const approvedApps = await this.appsRepo.count({ where: [{ status: 'approved' }, { status: 'accepted' }] });
     const rejectedApps = await this.appsRepo.count({ where: { status: 'rejected' } });
 
     console.log('📊 Analytics Debug:', {
@@ -145,7 +146,7 @@ export class AdminService {
       : 0;
 
     // Acceptance rate
-    const acceptanceRate = totalApps > 0 
+    const acceptanceRate = totalApps > 0
       ? Math.round((approvedApps / totalApps) * 100)
       : 0;
 

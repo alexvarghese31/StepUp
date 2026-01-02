@@ -143,9 +143,11 @@ export class JobsGateway {
 
   // 🟢 Notify job seeker application status update
   async notifyStatus(userId: number, update: any) {
-    const statusMessage = update.status === "approved" 
+    // Accept both 'approved' and 'accepted' as successful approvals
+    const isApproved = update.status === 'approved' || update.status === 'accepted';
+    const statusMessage = isApproved
       ? `🎉 Congratulations! Your application for "${update.jobTitle}" at ${update.company} has been approved`
-      : update.status === "rejected"
+      : update.status === 'rejected'
       ? `❌ Your application for "${update.jobTitle}" at ${update.company} was rejected`
       : `Application for "${update.jobTitle}" status updated to: ${update.status}`;
     

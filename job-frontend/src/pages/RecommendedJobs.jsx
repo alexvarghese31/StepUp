@@ -22,7 +22,21 @@ export default function RecommendedJobs() {
       const res = await api.get("/jobs/recommend", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setJobs(res.data);
+
+      // also merge saved/applied metadata so UI reflects state
+      let savedRes = { data: [] };
+      let appsRes = { data: [] };
+      try {
+        savedRes = await api.get('/jobs/saved', { headers: { Authorization: `Bearer ${token}` } });
+      } catch (e) {}
+      try {
+        appsRes = await api.get('/applications/me', { headers: { Authorization: `Bearer ${token}` } });
+      } catch (e) {}
+
+      const savedIds = new Set((savedRes.data || []).map(s => s.job?.id || s.jobId || s.job));
+      const appliedIds = new Set((appsRes.data || []).map(a => a.job?.id || a.jobId || a.job));
+
+      setJobs(res.data.map(j => ({ ...j, isSaved: savedIds.has(j.id), hasApplied: appliedIds.has(j.id) })));
     } catch (err) {
       console.error("Error fetching recommendations:", err);
       const errorMsg = err.response?.data?.message || "Failed to fetch recommendations. Please create your profile first.";
@@ -34,6 +48,8 @@ export default function RecommendedJobs() {
   }
 
   async function handleApply(jobId) {
+    const prev = jobs;
+    setJobs(prevJobs => prevJobs.map(j => j.id === jobId ? { ...j, hasApplied: true } : j));
     try {
       await api.post(`/applications/${jobId}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
@@ -41,11 +57,14 @@ export default function RecommendedJobs() {
       toast.success("Application submitted successfully!");
     } catch (err) {
       console.error("Error applying:", err);
+      setJobs(prev);
       toast.error(err.response?.data?.message || "Failed to apply");
     }
   }
 
   async function handleSave(jobId) {
+    const prev = jobs;
+    setJobs(prevJobs => prevJobs.map(j => j.id === jobId ? { ...j, isSaved: true } : j));
     try {
       await api.post(`/jobs/${jobId}/save`, {}, {
         headers: { Authorization: `Bearer ${token}` }
@@ -53,6 +72,7 @@ export default function RecommendedJobs() {
       toast.success("Job saved successfully!");
     } catch (err) {
       console.error("Error saving job:", err);
+      setJobs(prev);
       toast.error(err.response?.data?.message || "Failed to save job");
     }
   }
@@ -250,22 +270,31 @@ export default function RecommendedJobs() {
                   ) : (
                     <button 
                       onClick={() => handleApply(job.id)}
-                      style={styles.applyButton}
+                      disabled={job.status !== 'open' || job.hasApplied}
+                      style={{
+                        ...styles.applyButton,
+                        ...(job.status !== 'open' && styles.disabledButton),
+                        ...(job.hasApplied && styles.disabledButton),
+                      }}
                     >
                       <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Apply Now
+                      {job.hasApplied ? 'Applied' : 'Apply Now'}
                     </button>
                   )}
                   <button 
-                    onClick={() => handleSave(job.id)}
-                    style={styles.saveButton}
+                    onClick={() => !job.isSaved && handleSave(job.id)}
+                    disabled={job.isSaved}
+                    style={{
+                      ...styles.saveButton,
+                      ...(job.isSaved && styles.disabledButton)
+                    }}
                   >
                     <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                     </svg>
-                    Save
+                    {job.isSaved ? 'Saved' : 'Save'}
                   </button>
                 </div>
               </div>
@@ -497,6 +526,10 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '6px',
+  },
+  disabledButton: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
   },
   buttonIcon: {
     width: '16px',

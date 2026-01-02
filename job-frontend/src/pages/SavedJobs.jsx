@@ -20,7 +20,23 @@ export default function SavedJobs() {
       const res = await api.get("/jobs/saved", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSavedJobs(res.data);
+
+      // include applied metadata
+      let appsRes = { data: [] };
+      try {
+        appsRes = await api.get('/applications/me', { headers: { Authorization: `Bearer ${token}` } });
+      } catch (e) {}
+      const appliedIds = new Set((appsRes.data || []).map(a => a.job?.id || a.jobId || a.job));
+
+      const withFlags = (res.data || []).map(s => ({
+        ...s,
+        job: {
+          ...s.job,
+          hasApplied: appliedIds.has(s.job?.id)
+        }
+      }));
+
+      setSavedJobs(withFlags);
     } catch (err) {
       console.error("Error fetching saved jobs:", err);
       toast.error("Failed to fetch saved jobs");
@@ -43,6 +59,8 @@ export default function SavedJobs() {
   }
 
   async function handleApply(jobId) {
+    const prev = savedJobs;
+    setSavedJobs(prevSaved => prevSaved.map(s => s.job?.id === jobId ? { ...s, job: { ...s.job, hasApplied: true } } : s));
     try {
       await api.post(`/applications/${jobId}`, {}, {
         headers: { Authorization: `Bearer ${token}` }
@@ -50,6 +68,7 @@ export default function SavedJobs() {
       toast.success("Application submitted successfully!");
     } catch (err) {
       console.error("Error applying:", err);
+      setSavedJobs(prev);
       toast.error(err.response?.data?.message || "Failed to apply");
     }
   }
@@ -186,12 +205,17 @@ export default function SavedJobs() {
                     ) : (
                       <button 
                         onClick={() => handleApply(job.id)}
-                        style={styles.applyButton}
+                        disabled={job.status !== 'open' || job.hasApplied}
+                        style={{
+                          ...styles.applyButton,
+                          ...(job.status !== 'open' && styles.disabledButton),
+                          ...(job.hasApplied && styles.disabledButton),
+                        }}
                       >
                         <svg style={styles.buttonIcon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        Apply Now
+                        {job.hasApplied ? 'Applied' : 'Apply Now'}
                       </button>
                     )}
 
@@ -390,6 +414,10 @@ const styles = {
   buttonIcon: {
     width: '16px',
     height: '16px',
+  },
+  disabledButton: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
   },
   loadingContainer: {
     display: 'flex',
